@@ -1,0 +1,4 @@
+# OpenGLでなんか作ろうプロジェクト
+とりあえず、Stanford Bunny
+(https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%BF%E3%83%B3%E3%83%95%E3%82%A9%E3%83%BC%E3%83%89%E3%83%90%E3%83%8B%E3%83%BC)
+を表示することを目標とする。
