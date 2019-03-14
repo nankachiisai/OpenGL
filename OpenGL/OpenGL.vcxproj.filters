@@ -20,12 +20,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
     <None Include="main.vert">
       <Filter>ソース ファイル</Filter>
     </None>
     <None Include="main.frag">
       <Filter>ソース ファイル</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>
