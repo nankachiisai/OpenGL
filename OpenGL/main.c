@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
 static void display(void);
 static void idle(void);
@@ -14,6 +15,7 @@ static int freeShaders(GLuint VertShader, GLuint FragShader, GLuint program);
 static int transferData(float *data, int num, GLuint *VBO);
 static int bindAttributeVariable(GLuint program, GLuint VBO, char *name);
 static int bindUniformVariable4x4(GLuint program, float *data, char *name);
+static int loadBunny(char *filename, float **bunnyVertices, int *num);
 
 const double PI = 3.14159;
 
@@ -23,12 +25,6 @@ static float vertices[] = {
 	0.0f, 1.0f, 0.0f
 };
 
-static float colors[] = {
-	1.0f, 0.0f, 0.0f,
-	0.0f, 1.0f, 0.0f,
-	0.0f, 0.0f, 1.0f
-};
-
 static float rotationMatrix[] = {
 	1.0f, 0.0f, 0.0f, 0.0f,
 	0.0f, 1.0f, 0.0f, 0.0f,
@@ -36,12 +32,29 @@ static float rotationMatrix[] = {
 	0.0f, 0.0f, 0.0f, 1.0f
 };
 
+static float expantionMatrix[] = {
+	5.0f, 0.0f, 0.0f, 0.0f,
+	0.0f, 5.0f, 0.0f, 0.0f,
+	0.0f, 0.0f, 5.0f, 0.0f,
+	0.0f, 0.0f, 0.0f, 1.0f
+};
+
+static float *bunny;
+static int bunnyNum;
+
 static GLuint program;
 
 int main(int argc, char *argv[]) {
 	GLenum err;
 	GLuint vShader, fShader;
 	GLuint VBO[2];
+	int returnValue;
+
+	// スタンフォードバニーの読み込み
+	returnValue = loadBunny("bun_zipper.ply", &bunny, &bunnyNum);
+	if (returnValue == -1) {
+		return -1;
+	}
 
 	// GLUTの初期化
 	glutInit(&argc, argv);
@@ -67,12 +80,10 @@ int main(int argc, char *argv[]) {
 	useShaders(vShader, fShader, &program);
 
 	// データをGPUに転送する
-	transferData(vertices, sizeof(vertices), &VBO[0]);
-	transferData(colors, sizeof(colors), &VBO[1]);
+	transferData(bunny, bunnyNum, &VBO[0]);
 
 	// VBOとバーテックスシェーダのin変数とを関連付ける
 	bindAttributeVariable(program, VBO[0], "position");
-	bindAttributeVariable(program, VBO[1], "vColor");
 
 	// メインループ
 	glutMainLoop();
@@ -83,6 +94,9 @@ int main(int argc, char *argv[]) {
 
 	// VBOを削除する
 	glDeleteBuffers(2, VBO);
+
+	// スタンフォードバニーを削除する
+	free(bunny);
 
 	return 0;
 }
@@ -98,15 +112,16 @@ static void display(void) {
 	// 回転行列を生成する
 	rad = degree * PI / 180.0;
 	rotationMatrix[0] = cos(rad);
-	rotationMatrix[1] = -sin(rad);
-	rotationMatrix[4] = sin(rad);
-	rotationMatrix[5] = cos(rad);
+	rotationMatrix[2] = sin(rad);
+	rotationMatrix[8] = -sin(rad);
+	rotationMatrix[10] = cos(rad);
 
-	// 回転行列をuniform変数に関連付ける
+	// 回転行列、拡大行列をuniform変数に関連付ける
 	bindUniformVariable4x4(program, rotationMatrix, "rotationMatrix");
+	bindUniformVariable4x4(program, expantionMatrix, "expantionMatrix");
 
 	// 描画
-	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDrawArrays(GL_POINTS, 0, bunnyNum);
 
 	glFlush();
 
@@ -180,6 +195,7 @@ static int getShaderSource(char *fileName, GLenum shaderType, GLuint *compiledPr
 	if (returnValue == EOF) {
 		return -1;
 	}
+	fp = NULL;
 
 	// シェーダオブジェクトを作成する
 	shader = glCreateShader(shaderType);
@@ -279,4 +295,74 @@ static int bindUniformVariable4x4(GLuint program, float *data, char *name) {
 	glUniformMatrix4fv(uniform, 1, GL_FALSE, data);
 
 	return 0;
+}
+
+static int loadBunny(char *filename, float **bunnyVertices, int *num) {
+	FILE *fp;
+	int returnValue;
+	char *buf;
+	int strLength;
+	int cmpResult;
+	float x, y, z, confidence, intensity;
+	float *vertices;
+
+	//ファイルオープン
+	fp = fopen(filename, "r");
+	if (fp == NULL) {
+		return -1;
+	}
+
+	// 読み取り用バッファを1KB確保
+	buf = (char *) malloc(sizeof(char) * 1024);
+	if (buf == NULL) {
+		return -1;
+	}
+
+	// end_headerまで読み飛ばす
+	while (1) {
+		// 行を読み込む
+		returnValue = fgets(buf, sizeof(char) * 1024, fp);
+		if (returnValue == NULL) {
+			return -1;
+		}
+
+		// 文字列比較
+		strLength = strlen(buf);
+		cmpResult = strncmp(buf, "end_header\n", strLength);
+		if (cmpResult == 0) {
+			// ヘッダを読み終えた
+			break;
+		}
+		
+	}
+
+	// 読み取り用バッファをfreeする
+	free(buf);
+
+	// 頂点配列を確保する。35947 * 3 * 4 = 431,364バイト必要。
+	// 頂点配列は、使用後、freeすること。
+	const int vertNum = 35947 * 3; // 要素数
+	vertices = malloc(sizeof(float) * vertNum);
+	if (vertices == NULL) {
+		return -1;
+	}
+
+	// ひたすら読み込んでいく
+	for (int i = 0; i < 35947; i++) {
+		fscanf(fp, "%f %f %f %f %f", &x, &y, &z, &confidence, &intensity);
+		vertices[3 * i + 0] = x;
+		vertices[3 * i + 1] = y;
+		vertices[3 * i + 2] = z;
+	}
+
+	// ファイルクローズ
+	returnValue = fclose(fp);
+	if (returnValue == EOF) {
+		return -1;
+	}
+	fp = NULL;
+
+	// 頂点配列を返す
+	*bunnyVertices = vertices;
+	*num = vertNum;
 }

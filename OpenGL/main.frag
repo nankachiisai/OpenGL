@@ -1,8 +1,7 @@
 #version 450 core
 
-in vec3 fColor;
 out vec4 color;
 
 void main(void) {
-	color = vec4(fColor, 1.0);
+	color = vec4(0.0, 0.0, 0.0, 1.0);
 }
