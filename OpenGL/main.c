@@ -18,6 +18,7 @@ static int bindAttributeVariable(GLuint program, GLuint VBO, char *name);
 static int bindUniformVariable4x4(GLuint program, float *data, char *name);
 static int loadBunny(char *filename, bunny *b);
 static int freeBunny(bunny *b);
+static void multiply4x4(float A[16], float B[16], float AB[16]); // A * B = AB
 
 const double PI = 3.14159;
 
@@ -109,6 +110,7 @@ static void display(void) {
 	static double degree = 0.0;
 	double rad;
 	GLfloat white[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	GLfloat transformMatrix[16];
 
 	// ウィンドウを白で塗りつぶす
 	glClearBufferfv(GL_COLOR, 0, white);
@@ -121,8 +123,8 @@ static void display(void) {
 	rotationMatrix[10] = cos(rad);
 
 	// 回転行列、拡大行列をuniform変数に関連付ける
-	bindUniformVariable4x4(program, rotationMatrix, "rotationMatrix");
-	bindUniformVariable4x4(program, expantionMatrix, "expantionMatrix");
+	multiply4x4(rotationMatrix, expantionMatrix, transformMatrix);
+	bindUniformVariable4x4(program, transformMatrix, "transformMatrix");
 
 	// 描画
 	glDrawElements(GL_TRIANGLES, b.indexNum, GL_UNSIGNED_INT, 0);
@@ -405,4 +407,25 @@ static int freeBunny(bunny *b) {
 	b->indexNum = 0;
 
 	return 0;
+}
+
+static void multiply4x4(float A[16], float B[16], float AB[16]) {
+	float tmp;
+
+	// ゼロクリア
+	memset(AB, 0, sizeof(float) * 16);
+
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			tmp = 0.0f;
+
+			for (int k = 0; k < 4; k++) {
+				tmp += A[4 * i + k] * B[4 * k + j];
+			}
+
+			AB[4 * i + j] = tmp;
+		}
+	}
+
+	return;
 }
