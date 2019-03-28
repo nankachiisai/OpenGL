@@ -6,16 +6,18 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include "bunny.h"
 
 static void display(void);
 static void idle(void);
 static int getShaderSource(char *fileName, GLenum shaderType, GLuint *compiledProgram);
 static int useShaders(GLuint VertShader, GLuint FragShader, GLuint *program);
 static int freeShaders(GLuint VertShader, GLuint FragShader, GLuint program);
-static int transferData(float *data, int num, GLuint *VBO);
+static int transferData(float *data, int num, GLenum bufferType, GLuint *buffer);
 static int bindAttributeVariable(GLuint program, GLuint VBO, char *name);
 static int bindUniformVariable4x4(GLuint program, float *data, char *name);
-static int loadBunny(char *filename, float **bunnyVertices, int *num);
+static int loadBunny(char *filename, bunny *b);
+static int freeBunny(bunny *b);
 
 const double PI = 3.14159;
 
@@ -39,19 +41,19 @@ static float expantionMatrix[] = {
 	0.0f, 0.0f, 0.0f, 1.0f
 };
 
-static float *bunny;
-static int bunnyNum;
+static bunny b;
 
 static GLuint program;
+GLuint VBO; // Vertex Buffer Object
+GLuint IBO; // Index Buffer Object
 
 int main(int argc, char *argv[]) {
 	GLenum err;
 	GLuint vShader, fShader;
-	GLuint VBO[2];
 	int returnValue;
 
 	// スタンフォードバニーの読み込み
-	returnValue = loadBunny("bun_zipper.ply", &bunny, &bunnyNum);
+	returnValue = loadBunny("bun_zipper.ply", &b);
 	if (returnValue == -1) {
 		return -1;
 	}
@@ -80,10 +82,11 @@ int main(int argc, char *argv[]) {
 	useShaders(vShader, fShader, &program);
 
 	// データをGPUに転送する
-	transferData(bunny, bunnyNum, &VBO[0]);
+	transferData(b.vertices, b.vertexNum, GL_ARRAY_BUFFER, &VBO);
+	transferData(b.vertexIndices, b.indexNum, GL_ELEMENT_ARRAY_BUFFER, &IBO);
 
 	// VBOとバーテックスシェーダのin変数とを関連付ける
-	bindAttributeVariable(program, VBO[0], "position");
+	bindAttributeVariable(program, VBO, "position");
 
 	// メインループ
 	glutMainLoop();
@@ -92,11 +95,12 @@ int main(int argc, char *argv[]) {
 	freeShaders(vShader, fShader, program);
 	program = 0;
 
-	// VBOを削除する
-	glDeleteBuffers(2, VBO);
+	// バッファを削除する
+	glDeleteBuffers(1, VBO);
+	glDeleteBuffers(1, IBO);
 
 	// スタンフォードバニーを削除する
-	free(bunny);
+	freeBunny(&b);
 
 	return 0;
 }
@@ -121,7 +125,7 @@ static void display(void) {
 	bindUniformVariable4x4(program, expantionMatrix, "expantionMatrix");
 
 	// 描画
-	glDrawArrays(GL_POINTS, 0, bunnyNum);
+	glDrawElements(GL_TRIANGLES, b.indexNum, GL_UNSIGNED_INT, 0);
 
 	glFlush();
 
@@ -260,13 +264,13 @@ static int freeShaders(GLuint VertShader, GLuint FragShader, GLuint program) {
 	return 0;
 }
 
-static int transferData(float *data, int num, GLuint *VBO) {
-	// VBOを作成する
-	glGenBuffers(1, VBO);
+static int transferData(float *data, int num, GLenum bufferType, GLuint *buffer) {
+	// バッファを作成する
+	glGenBuffers(1, buffer);
 
-	// VBOにデータをセットする
-	glBindBuffer(GL_ARRAY_BUFFER, *VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * num, data, GL_STATIC_DRAW);
+	// バッファにデータをセットする
+	glBindBuffer(bufferType, *buffer);
+	glBufferData(bufferType, sizeof(float) * num, data, GL_STATIC_DRAW);
 
 	return 0;
 }
@@ -297,14 +301,16 @@ static int bindUniformVariable4x4(GLuint program, float *data, char *name) {
 	return 0;
 }
 
-static int loadBunny(char *filename, float **bunnyVertices, int *num) {
+static int loadBunny(char *filename, bunny *b) {
 	FILE *fp;
 	int returnValue;
 	char *buf;
 	int strLength;
 	int cmpResult;
 	float x, y, z, confidence, intensity;
+	int tmp, ix, iy, iz;
 	float *vertices;
+	int *indices;
 
 	//ファイルオープン
 	fp = fopen(filename, "r");
@@ -355,6 +361,22 @@ static int loadBunny(char *filename, float **bunnyVertices, int *num) {
 		vertices[3 * i + 2] = z;
 	}
 
+	// 頂点インデックス配列を確保する。69451 * 3 * 4 = 833,412バイト必要。
+	// 頂点インデックス配列は、使用後、freeすること。
+	const int idxNum = 69451 * 3;	// 要素数
+	indices = malloc(sizeof(unsigned int) * idxNum);
+	if (indices == NULL) {
+		return -1;
+	}
+
+	// ひたすら読み込む
+	for (int i = 0; i < 69451; i++) {
+		fscanf(fp, "%d %d %d %d", &tmp, &ix, &iy, &iz);
+		indices[3 * i + 0] = ix;
+		indices[3 * i + 1] = iy;
+		indices[3 * i + 2] = iz;
+	}
+
 	// ファイルクローズ
 	returnValue = fclose(fp);
 	if (returnValue == EOF) {
@@ -363,6 +385,24 @@ static int loadBunny(char *filename, float **bunnyVertices, int *num) {
 	fp = NULL;
 
 	// 頂点配列を返す
-	*bunnyVertices = vertices;
-	*num = vertNum;
+	b->vertices = vertices;
+	b->vertexNum = vertNum;
+
+	// 頂点インデックス配列を返す
+	b->vertexIndices = indices;
+	b->indexNum = idxNum;
+
+	return 0;
+}
+
+static int freeBunny(bunny *b) {
+	free(b->vertices);
+	b->vertices = NULL;
+	b->vertexNum = 0;
+
+	free(b->vertexIndices);
+	b->vertexIndices = NULL;
+	b->indexNum = 0;
+
+	return 0;
 }
