@@ -19,6 +19,8 @@ static int bindUniformVariable4x4(GLuint program, float *data, char *name);
 static int loadBunny(char *filename, bunny *b);
 static int freeBunny(bunny *b);
 static void multiply4x4(float A[16], float B[16], float AB[16]); // A * B = AB
+static void createOrthogonal(float Left, float Right, float Top, float Bottom, float Near, float Far, float Matrix[16]);
+static void createLookAt(float position[3], float orientation[3], float up[3], float Matrix[16]);
 
 const double PI = 3.14159;
 
@@ -36,9 +38,9 @@ static float rotationMatrix[] = {
 };
 
 static float expantionMatrix[] = {
-	5.0f, 0.0f, 0.0f, 0.0f,
-	0.0f, 5.0f, 0.0f, 0.0f,
-	0.0f, 0.0f, 5.0f, 0.0f,
+	1.0f, 0.0f, 0.0f, 0.0f,
+	0.0f, 1.0f, 0.0f, 0.0f,
+	0.0f, 0.0f, 1.0f, 0.0f,
 	0.0f, 0.0f, 0.0f, 1.0f
 };
 
@@ -111,9 +113,22 @@ static void display(void) {
 	double rad;
 	GLfloat white[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	GLfloat transformMatrix[16];
+	GLfloat orthogonalMatrix[16];
+	GLfloat LookAtMatrix[16];
+	GLfloat tmpMatrix[16];
+	GLfloat resultMatrix[16];
 
 	// ウィンドウを白で塗りつぶす
 	glClearBufferfv(GL_COLOR, 0, white);
+
+	// 平行投影変換行列を生成する
+	createOrthogonal(-10.0f, 10.0f, 10.0f, -10.0f, 10.0f, 10.0f, orthogonalMatrix);
+	
+	// 視野変換行列を生成する
+	const float position[3] = {0.0f, 0.0f, 0.0f};
+	const float orientation[3] = {0.0f, 0.0f, -1.0f};
+	const float up[3] = {0.0f, 1.0f, 0.0f};
+	createLookAt(position, orientation, up, LookAtMatrix);
 
 	// 回転行列を生成する
 	rad = degree * PI / 180.0;
@@ -122,9 +137,11 @@ static void display(void) {
 	rotationMatrix[8] = -sin(rad);
 	rotationMatrix[10] = cos(rad);
 
-	// 回転行列、拡大行列をuniform変数に関連付ける
+	// 変換行列をuniform変数に関連付ける
 	multiply4x4(rotationMatrix, expantionMatrix, transformMatrix);
-	bindUniformVariable4x4(program, transformMatrix, "transformMatrix");
+	multiply4x4(orthogonalMatrix, LookAtMatrix, tmpMatrix);
+	multiply4x4(tmpMatrix, transformMatrix, resultMatrix);
+	bindUniformVariable4x4(program, resultMatrix, "transformMatrix");
 
 	// 描画
 	glDrawElements(GL_TRIANGLES, b.indexNum, GL_UNSIGNED_INT, 0);
@@ -426,6 +443,55 @@ static void multiply4x4(float A[16], float B[16], float AB[16]) {
 			AB[4 * i + j] = tmp;
 		}
 	}
+
+	return;
+}
+
+static void createOrthogonal(float Left, float Right, float Top, float Bottom, float Near, float Far, float Matrix[16]) {
+	Matrix[0] = 2.0f / (Right - Left);
+	Matrix[1] = 0.0f;
+	Matrix[2] = 0.0f;
+	Matrix[3] = -(Right + Left) / (Right - Left);
+	Matrix[4] = 0.0f;
+	Matrix[5] = 2.0f / (Top - Bottom);
+	Matrix[6] = 0.0f;
+	Matrix[7] = -(Top + Bottom) / (Top - Bottom);
+	Matrix[8] = 0.0f;
+	Matrix[9] = 0.0f;
+	Matrix[10] = -2.0f / (Far - Near);
+	Matrix[11] = -(Far + Near) / (Far - Near);
+	Matrix[12] = 0.0f;
+	Matrix[13] = 0.0f;
+	Matrix[14] = 0.0f;
+	Matrix[15] = 1.0f;
+
+	return;
+}
+
+static void createLookAt(float position[3], float orientation[3], float up[3], float Matrix[16]) {
+	float v[3];
+
+	// orientation × up
+	v[0] = orientation[1] * up[2] - orientation[2] * up[1];
+	v[1] = orientation[2] * up[0] - orientation[0] * up[2];
+	v[2] = orientation[0] * up[1] - orientation[1] * up[0];
+
+	Matrix[0] = orientation[0];
+	Matrix[1] = orientation[1];
+	Matrix[2] = orientation[2];
+	Matrix[3] = -position[0] * orientation[0] - position[1] * orientation[1] - position[2] * orientation[2];
+	Matrix[4] = up[0];
+	Matrix[5] = up[1];
+	Matrix[6] = up[2];
+	Matrix[7] = -position[0] * up[0] - position[1] * up[1] - position[2] * up[2];
+	Matrix[8] = v[0];
+	Matrix[9] = v[1];
+	Matrix[10] = v[2];
+	Matrix[11] = -position[0] * v[0] - position[1] * v[1] - position[2] * v[2];
+	Matrix[12] = 0.0f;
+	Matrix[13] = 0.0f;
+	Matrix[14] = 0.0f;
+	Matrix[15] = 1.0f;
 
 	return;
 }
