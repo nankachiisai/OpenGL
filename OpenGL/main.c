@@ -38,9 +38,9 @@ static float rotationMatrix[] = {
 };
 
 static float expantionMatrix[] = {
-	1.0f, 0.0f, 0.0f, 0.0f,
-	0.0f, 1.0f, 0.0f, 0.0f,
-	0.0f, 0.0f, 1.0f, 0.0f,
+	40.0f, 0.0f, 0.0f, 0.0f,
+	0.0f, 40.0f, 0.0f, 0.0f,
+	0.0f, 0.0f, 40.0f, 0.0f,
 	0.0f, 0.0f, 0.0f, 1.0f
 };
 
@@ -122,7 +122,7 @@ static void display(void) {
 	glClearBufferfv(GL_COLOR, 0, white);
 
 	// 平行投影変換行列を生成する
-	createOrthogonal(-10.0f, 10.0f, 10.0f, -10.0f, 10.0f, 10.0f, orthogonalMatrix);
+	createOrthogonal(-10.0f, 10.0f, 10.0f, -10.0f, 0.0f, 10.0f, orthogonalMatrix);
 	
 	// 視野変換行列を生成する
 	const float position[3] = {0.0f, 0.0f, 0.0f};
